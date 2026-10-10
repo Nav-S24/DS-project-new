@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+package emergency;
+
+// Common Messages
+message EmptyRequest {}
+
+message Ambulance {
+    string id = 1;
+    string status = 2; // "AVAILABLE", "BUSY"
+    double latitude = 3;
+    double longitude = 4;
+    string current_incident_id = 5;
+}
+
+message Hospital {
+    string id = 1;
+    string name = 2;
+    string location = 3;
+    int32 total_beds = 4;
+    int32 available_beds = 5;
+}
+
+// Ambulance RPC Messages
+message AmbulanceListResponse {
+    repeated Ambulance ambulances = 1;
+}
+
+message AmbulanceAssignmentRequest {
+    string ambulance_id = 1;
+    string incident_id = 2;
+}
+
+message AmbulanceAssignmentResponse {
+    bool success = 1;
+    string message = 2;
+    string ambulance_id = 3;
+}
+
+message AmbulanceReleaseRequest {
+    string ambulance_id = 1;
+    string incident_id = 2;
+}
+
+message AmbulanceReleaseResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+message AmbulanceStatusRequest {
+    string ambulance_id = 1;
+}
+
+message AmbulanceStatusResponse {
+    bool found = 1;
+    Ambulance ambulance = 2;
+}
+
+// Hospital RPC Messages
+message HospitalListResponse {
+    repeated Hospital hospitals = 1;
+}
+
+message BedReservationRequest {
+    string hospital_id = 1;
+    string incident_id = 2;
+}
+
+message BedReservationResponse {
+    bool success = 1;
+    string message = 2;
+    string reservation_id = 3;
+}
+
+message BedReleaseRequest {
+    string hospital_id = 1;
+    string incident_id = 2;
+}
+
+message BedReleaseResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+message HospitalStatusRequest {
+    string hospital_id = 1;
+}
+
+message HospitalStatusResponse {
+    bool found = 1;
+    Hospital hospital = 2;
+}
+
+// gRPC Services
+service AmbulanceService {
+    rpc GetAvailableAmbulances(EmptyRequest) returns (AmbulanceListResponse);
+    rpc AssignAmbulance(AmbulanceAssignmentRequest) returns (AmbulanceAssignmentResponse);
+    rpc ReleaseAmbulance(AmbulanceReleaseRequest) returns (AmbulanceReleaseResponse);
+    rpc GetAmbulanceStatus(AmbulanceStatusRequest) returns (AmbulanceStatusResponse);
+}
+
+service HospitalService {
+    rpc GetAvailableHospitals(EmptyRequest) returns (HospitalListResponse);
+    rpc ReserveBed(BedReservationRequest) returns (BedReservationResponse);
+    rpc ReleaseBed(BedReleaseRequest) returns (BedReleaseResponse);
+    rpc GetHospitalStatus(HospitalStatusRequest) returns (HospitalStatusResponse);
+}

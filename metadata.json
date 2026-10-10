@@ -1,0 +1,6 @@
+{
+  "name": "Distributed Emergency Response and Dispatch System",
+  "description": "Operational emergency response and dispatch management dashboard for monitoring active incidents, ambulance routing, and hospital allocations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
