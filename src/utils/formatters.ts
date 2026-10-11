@@ -19,6 +19,39 @@ export function formatIncidentTime(timestamp?: string): string {
   }
 }
 
+export function formatClockTime(timestamp?: string): string {
+  if (!timestamp) return '--:--:--';
+  try {
+    const d = new Date(timestamp);
+    return isNaN(d.getTime()) ? '--:--:--' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch {
+    return '--:--:--';
+  }
+}
+
+/**
+ * Formats a timestamp into consistent HH:MM AM/PM for estimated arrival time.
+ */
+export function formatETA(timestamp?: string | number | Date | null): string {
+  if (!timestamp) return '--:--';
+  try {
+    const d = typeof timestamp === 'object' ? timestamp : new Date(timestamp);
+    if (isNaN(d.getTime())) return '--:--';
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+  } catch {
+    return '--:--';
+  }
+}
+
+export function formatDuration(seconds?: number | null): string {
+  if (seconds == null || isNaN(seconds) || seconds <= 0) return '0 min';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  if (mins === 0) return `${secs}s`;
+  if (secs === 0) return `${mins} min`;
+  return `${mins}m ${secs}s`;
+}
+
 export function getSeverityDetails(severity: Severity | string) {
   switch (severity) {
     case 'CRITICAL':
@@ -60,10 +93,48 @@ export function getSeverityDetails(severity: Severity | string) {
 export function getStatusDetails(status: IncidentStatus | string) {
   switch (status) {
     case 'DISPATCHED':
+    case 'EN_ROUTE_TO_INCIDENT':
       return {
-        label: 'Dispatched',
+        label: 'En Route to Scene',
+        bgClass: 'bg-blue-50 text-blue-700 border-blue-200',
+        dotClass: 'bg-blue-500 animate-pulse',
+      };
+    case 'ARRIVED_AT_INCIDENT':
+      return {
+        label: 'At Incident Scene',
+        bgClass: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+        dotClass: 'bg-indigo-500 animate-pulse',
+      };
+    case 'PATIENT_PICKED_UP':
+    case 'EN_ROUTE_TO_HOSPITAL':
+      return {
+        label: 'En Route to Hospital',
+        bgClass: 'bg-cyan-50 text-cyan-800 border-cyan-200',
+        dotClass: 'bg-cyan-600 animate-pulse',
+      };
+    case 'ARRIVED_AT_HOSPITAL':
+      return {
+        label: 'At Hospital Trauma Bay',
+        bgClass: 'bg-teal-50 text-teal-700 border-teal-200',
+        dotClass: 'bg-teal-500',
+      };
+    case 'COMPLETED':
+      return {
+        label: 'Patient Delivered / Completed',
         bgClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
         dotClass: 'bg-emerald-500',
+      };
+    case 'DISPATCHING':
+      return {
+        label: 'Dispatching...',
+        bgClass: 'bg-blue-50 text-blue-700 border-blue-200',
+        dotClass: 'bg-blue-500 animate-pulse',
+      };
+    case 'REPORTED':
+      return {
+        label: 'Reported',
+        bgClass: 'bg-slate-100 text-slate-800 border-slate-300',
+        dotClass: 'bg-slate-500',
       };
     case 'WAITING_FOR_AMBULANCE':
       return {
@@ -73,9 +144,21 @@ export function getStatusDetails(status: IncidentStatus | string) {
       };
     case 'WAITING_FOR_HOSPITAL':
       return {
-        label: 'Waiting for Hospital',
+        label: 'Waiting for Hospital Bed',
         bgClass: 'bg-orange-50 text-orange-700 border-orange-200',
         dotClass: 'bg-orange-500 animate-pulse',
+      };
+    case 'ROLLBACK_PENDING':
+      return {
+        label: 'Rollback Pending',
+        bgClass: 'bg-rose-50 text-rose-700 border-rose-200',
+        dotClass: 'bg-rose-500 animate-pulse',
+      };
+    case 'ROLLED_BACK':
+      return {
+        label: 'Rolled Back',
+        bgClass: 'bg-purple-50 text-purple-700 border-purple-200',
+        dotClass: 'bg-purple-500',
       };
     case 'DISPATCH_FAILED':
       return {
@@ -101,7 +184,7 @@ export function getErrorMessage(errorCode?: string | null): string {
     case 'AMBULANCE_SERVICE_UNAVAILABLE':
       return 'Ambulance service connection timed out or is unavailable.';
     case 'NO_HOSPITAL_BED_AVAILABLE':
-      return 'No emergency trauma or inpatient hospital beds available. Unit assignment rolled back.';
+      return 'No emergency trauma or inpatient hospital beds available. Tentative ambulance reservation was safely rolled back.';
     case 'HOSPITAL_SERVICE_UNAVAILABLE':
       return 'Hospital service unresponsive. Tentative ambulance reservation was safely rolled back.';
     case 'BED_RESERVATION_FAILED':

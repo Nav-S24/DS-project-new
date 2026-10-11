@@ -1,25 +1,34 @@
 import React from 'react';
-import { Plus, ShieldAlert, AlertTriangle, ArrowRight, RefreshCw, CheckCircle2, Truck, Activity } from 'lucide-react';
+import { Plus, ArrowRight } from 'lucide-react';
 import { SummaryCards } from '../components/SummaryCards';
 import { IncidentTable } from '../components/IncidentTable';
 import { RecentActivity } from '../components/RecentActivity';
-import { StatusBadge, SeverityBadge } from '../components/StatusBadge';
+import { LiveFleetMap } from '../components/LiveFleetMap';
 
 export function Dashboard({
   incidents = [],
+  ambulances = [],
+  hospitals = [],
   isLoading = false,
   onOpenNewIncident,
   onSelectIncident,
   onViewAllIncidents,
   activities = [],
   onSelectIncidentId,
+  lastEventTime,
+  onRequestFleetRefresh,
+  onDischargePatient,
 }) {
-  // Filter active incidents that require attention (waiting states, critical/high severity, or un-dispatched)
+  // Filter active incidents that require attention
   const activeIncidents = incidents.filter(
     (i) =>
       i.status === 'WAITING_FOR_AMBULANCE' ||
       i.status === 'WAITING_FOR_HOSPITAL' ||
       i.status === 'CREATED' ||
+      i.status === 'REPORTED' ||
+      i.status === 'DISPATCHING' ||
+      i.status === 'ROLLBACK_PENDING' ||
+      i.status === 'ROLLED_BACK' ||
       i.status === 'DISPATCH_FAILED' ||
       i.severity === 'CRITICAL'
   );
@@ -33,7 +42,7 @@ export function Dashboard({
             Emergency Dispatch Center
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Real-time coordinator monitoring for emergency calls, ambulance units, and hospital allocations.
+            Real-time coordinator monitoring for emergency calls, OpenStreetMap live ambulance routing, and hospital bed allocation.
           </p>
         </div>
 
@@ -48,8 +57,18 @@ export function Dashboard({
         </button>
       </div>
 
-      {/* Top Summary Cards with Real Computed Metrics */}
-      <SummaryCards incidents={incidents} />
+      {/* Top Summary Cards with Real Computed Metrics & Bed Capacity */}
+      <SummaryCards incidents={incidents} hospitals={hospitals} />
+
+      {/* Real-World Street Map & Ambulance Routing */}
+      <LiveFleetMap
+        ambulances={ambulances}
+        hospitals={hospitals}
+        incidents={incidents}
+        lastEventTime={lastEventTime}
+        onRequestFleetRefresh={onRequestFleetRefresh}
+        onDischargePatient={onDischargePatient}
+      />
 
       {/* Main Grid: Active Incidents Table & Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

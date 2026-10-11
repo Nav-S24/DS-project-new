@@ -1,14 +1,30 @@
 import React from 'react';
-import { AlertTriangle, CheckCircle2, Clock, Truck, ShieldAlert, Building2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, Truck, ShieldAlert, Building2, UserCheck } from 'lucide-react';
 
-export function SummaryCards({ incidents = [] }) {
+export function SummaryCards({ incidents = [], hospitals = [] }) {
   const total = incidents.length;
   const criticalCount = incidents.filter((i) => i.severity === 'CRITICAL').length;
-  const dispatchedCount = incidents.filter((i) => i.status === 'DISPATCHED').length;
-  const waitingAmbCount = incidents.filter((i) => i.status === 'WAITING_FOR_AMBULANCE').length;
-  const waitingHospCount = incidents.filter((i) => i.status === 'WAITING_FOR_HOSPITAL').length;
-  const failedCount = incidents.filter((i) => i.status === 'DISPATCH_FAILED').length;
-  const pendingOrRolledBack = waitingAmbCount + waitingHospCount + failedCount;
+  
+  const enRouteOrActive = incidents.filter(
+    (i) =>
+      i.status === 'DISPATCHED' ||
+      i.status === 'EN_ROUTE_TO_INCIDENT' ||
+      i.status === 'ARRIVED_AT_INCIDENT' ||
+      i.status === 'PATIENT_PICKED_UP' ||
+      i.status === 'EN_ROUTE_TO_HOSPITAL' ||
+      i.status === 'ARRIVED_AT_HOSPITAL'
+  ).length;
+
+  const completedCount = incidents.filter((i) => i.status === 'COMPLETED').length;
+
+  const totalBeds = hospitals.reduce((acc, h) => acc + (h.total_beds || 0), 0);
+  const availableBeds = hospitals.reduce((acc, h) => acc + (h.available_beds || 0), 0);
+  const reservedBeds = hospitals.reduce((acc, h) => acc + (h.reserved_beds || 0), 0);
+  const occupiedBeds = hospitals.reduce((acc, h) => acc + (h.occupied_beds || 0), 0);
+
+  const waitingCount = incidents.filter(
+    (i) => i.status === 'WAITING_FOR_AMBULANCE' || i.status === 'WAITING_FOR_HOSPITAL'
+  ).length;
 
   const cards = [
     {
@@ -21,31 +37,31 @@ export function SummaryCards({ incidents = [] }) {
       borderColor: 'border-blue-100',
     },
     {
-      title: 'Dispatched & En Route',
-      value: dispatchedCount,
-      sub: 'Ambulance & bed confirmed',
-      icon: CheckCircle2,
+      title: 'Active Patient Journeys',
+      value: enRouteOrActive,
+      sub: `${completedCount} completed deliveries`,
+      icon: Truck,
+      iconColor: 'text-indigo-600',
+      bgColor: 'bg-indigo-50/60',
+      borderColor: 'border-indigo-100',
+    },
+    {
+      title: 'Hospital Available Beds',
+      value: availableBeds,
+      sub: `${reservedBeds} reserved &bull; ${occupiedBeds} occupied`,
+      icon: Building2,
       iconColor: 'text-emerald-600',
       bgColor: 'bg-emerald-50/60',
       borderColor: 'border-emerald-100',
     },
     {
-      title: 'Waiting for Units',
-      value: waitingAmbCount,
-      sub: 'Awaiting available ambulance',
-      icon: Truck,
+      title: 'Sector Queue / Waiting',
+      value: waitingCount,
+      sub: 'Awaiting units or bed slot',
+      icon: AlertTriangle,
       iconColor: 'text-amber-600',
       bgColor: 'bg-amber-50/60',
       borderColor: 'border-amber-100',
-    },
-    {
-      title: 'Hospital Capacity Rollback',
-      value: waitingHospCount,
-      sub: 'Unit freed, awaiting bed slot',
-      icon: Building2,
-      iconColor: 'text-orange-600',
-      bgColor: 'bg-orange-50/60',
-      borderColor: 'border-orange-100',
     },
   ];
 
@@ -61,7 +77,10 @@ export function SummaryCards({ incidents = [] }) {
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{card.title}</p>
               <h3 className="text-2xl font-bold font-mono text-slate-900 mt-1">{card.value}</h3>
-              <p className="text-[11px] text-slate-500 mt-0.5">{card.sub}</p>
+              <p
+                className="text-[11px] text-slate-500 mt-0.5"
+                dangerouslySetInnerHTML={{ __html: card.sub }}
+              />
             </div>
             <div className={`w-11 h-11 rounded-lg ${card.bgColor} flex items-center justify-center shrink-0`}>
               <Icon className={`w-5 h-5 ${card.iconColor}`} />

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { X, AlertCircle, Send, CheckCircle2, ShieldAlert, Building2, Truck, RefreshCw } from 'lucide-react';
-import { createIncident } from '../services/api';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, AlertCircle, Send, CheckCircle2, ShieldAlert, Building2, Truck, RefreshCw, MapPin, Search, Navigation } from 'lucide-react';
+import L from 'leaflet';
+import { createIncident, geocodeAddress } from '../services/api';
 import { StatusBadge, SeverityBadge } from './StatusBadge';
 import { DispatchTimeline } from './DispatchTimeline';
 import { getErrorMessage } from '../utils/formatters';
@@ -36,16 +37,112 @@ const SEVERITY_OPTIONS = [
   },
 ];
 
+const QUICK_PUNE_LANDMARKS = [
+  { name: 'Fergusson College Rd, Deccan Gymkhana', lat: 18.5186, lng: 73.8423 },
+  { name: 'Mumbai-Pune Bypass, Warje Flyover', lat: 18.4820, lng: 73.7990 },
+  { name: 'Kothrud Bus Stand, Sector 4', lat: 18.5074, lng: 73.8077 },
+  { name: 'Bhosari MIDC Industrial Zone', lat: 18.6298, lng: 73.8485 },
+  { name: 'Camp Cantonment Area, MG Road', lat: 18.5142, lng: 73.8789 },
+  { name: 'Shivaji Nagar Bus Station, Sector 2', lat: 18.5314, lng: 73.8446 },
+  { name: 'Baner High Street', lat: 18.5590, lng: 73.7868 },
+  { name: 'Aundh Parihar Chowk', lat: 18.5626, lng: 73.8087 },
+];
+
 export function IncidentForm({ isOpen, onClose, onSuccess }) {
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
   const [severity, setSeverity] = useState('HIGH');
+  const [selectedCoords, setSelectedCoords] = useState(null);
+  const [locationType, setLocationType] = useState('simulated_demo');
+  const [isGeocoding, setIsGeocoding] = useState(false);
+  const [showMapPicker, setShowMapPicker] = useState(false);
+
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [createdIncidentResult, setCreatedIncidentResult] = useState(null);
 
+  const mapPickerRef = useRef(null);
+  const mapPickerInstanceRef = useRef(null);
+  const pickerMarkerRef = useRef(null);
+
+  // Initialize mini map picker when toggled
+  useEffect(() => {
+    if (!showMapPicker || !mapPickerRef.current) return;
+
+    if (!mapPickerInstanceRef.current) {
+      const initialLat = selectedCoords?.lat || 18.5204;
+      const initialLng = selectedCoords?.lng || 73.8567;
+
+      const map = L.map(mapPickerRef.current, {
+        center: [initialLat, initialLng],
+        zoom: 13,
+      });
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: '&copy; OpenStreetMap',
+      }).addTo(map);
+
+      const marker = L.marker([initialLat, initialLng], {
+        draggable: true,
+      }).addTo(map);
+
+      marker.on('dragend', () => {
+        const pos = marker.getLatLng();
+        setSelectedCoords({ lat: +pos.lat.toFixed(4), lng: +pos.lng.toFixed(4) });
+        setLocationType('user_selected');
+      });
+
+      map.on('click', (e) => {
+        marker.setLatLng(e.latlng);
+        setSelectedCoords({ lat: +e.latlng.lat.toFixed(4), lng: +e.latlng.lng.toFixed(4) });
+        setLocationType('user_selected');
+      });
+
+      mapPickerInstanceRef.current = map;
+      pickerMarkerRef.current = marker;
+    }
+
+    return () => {
+      if (mapPickerInstanceRef.current) {
+        mapPickerInstanceRef.current.remove();
+        mapPickerInstanceRef.current = null;
+        pickerMarkerRef.current = null;
+      }
+    };
+  }, [showMapPicker]);
+
   if (!isOpen) return null;
+
+  const handleGeocode = async () => {
+    if (!location.trim()) return;
+    setIsGeocoding(true);
+    try {
+      const resp = await geocodeAddress(location.trim());
+      if (resp && resp.data) {
+        setSelectedCoords({ lat: resp.data.lat, lng: resp.data.lng });
+        setLocationType(resp.data.location_type || 'geocoded');
+        if (resp.data.display_name && !location.includes(',')) {
+          setLocation(resp.data.display_name.split(',')[0]);
+        }
+      }
+    } catch {
+      // Fallback
+    } finally {
+      setIsGeocoding(false);
+    }
+  };
+
+  const handleSelectQuickLandmark = (item) => {
+    setLocation(item.name);
+    setSelectedCoords({ lat: item.lat, lng: item.lng });
+    setLocationType('simulated_demo');
+    if (mapPickerInstanceRef.current && pickerMarkerRef.current) {
+      mapPickerInstanceRef.current.setView([item.lat, item.lng], 14);
+      pickerMarkerRef.current.setLatLng([item.lat, item.lng]);
+    }
+  };
 
   const validate = () => {
     const errs = {};
@@ -56,7 +153,7 @@ export function IncidentForm({ isOpen, onClose, onSuccess }) {
     }
 
     if (!location.trim()) {
-      errs.location = 'Incident location or cross-streets are required';
+      errs.location = 'Incident location or landmark is required';
     } else if (location.trim().length < 3) {
       errs.location = 'Location should be at least 3 characters';
     }
@@ -83,6 +180,9 @@ export function IncidentForm({ isOpen, onClose, onSuccess }) {
         description: description.trim(),
         location: location.trim(),
         severity,
+        latitude: selectedCoords?.lat,
+        longitude: selectedCoords?.lng,
+        location_type: locationType,
       };
 
       const result = await createIncident(payload);
@@ -97,11 +197,15 @@ export function IncidentForm({ isOpen, onClose, onSuccess }) {
       }
     } catch (err) {
       console.error('Failed to create incident:', err);
-      setSubmitError(
+      const errorMsg =
         err.response?.data?.detail ||
-          err.message ||
-          'Failed to dispatch emergency incident. Check coordinator backend connection.'
-      );
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        (err.message === 'Network Error'
+          ? 'Network Error: Unable to reach the dispatch coordinator service. Please check your connection or gateway status.'
+          : err.message) ||
+        'Failed to dispatch emergency incident. Check coordinator backend connection.';
+      setSubmitError(errorMsg);
     } finally {
       setIsSubmitting(false);
     }
@@ -111,6 +215,9 @@ export function IncidentForm({ isOpen, onClose, onSuccess }) {
     setDescription('');
     setLocation('');
     setSeverity('HIGH');
+    setSelectedCoords(null);
+    setLocationType('simulated_demo');
+    setShowMapPicker(false);
     setErrors({});
     setSubmitError(null);
     setCreatedIncidentResult(null);
@@ -134,7 +241,7 @@ export function IncidentForm({ isOpen, onClose, onSuccess }) {
                 Log Emergency Call & Dispatch
               </h3>
               <p className="text-[11px] text-slate-500">
-                Triggers distributed 2-phase coordination & fleet assignment
+                Triggers road-route calculation, patient pickup, and trauma bay allocation
               </p>
             </div>
           </div>
@@ -155,7 +262,7 @@ export function IncidentForm({ isOpen, onClose, onSuccess }) {
                 Incident Registered: {createdIncidentResult.incident_id}
               </h4>
               <p className="text-xs text-emerald-700 mt-1">
-                Coordinator completed saga execution. Status:{' '}
+                Coordinator completed saga execution. Journey Stage:{' '}
                 <span className="font-semibold">{createdIncidentResult.status}</span>
               </p>
             </div>
@@ -168,7 +275,7 @@ export function IncidentForm({ isOpen, onClose, onSuccess }) {
                 </p>
               </div>
               <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-                <span className="text-[11px] font-semibold text-slate-500 uppercase">Hospital</span>
+                <span className="text-[11px] font-semibold text-slate-500 uppercase">Hospital (Bed Reserved)</span>
                 <p className="text-xs font-mono font-bold text-slate-800 mt-0.5">
                   {createdIncidentResult.assigned_hospital || 'None (Bed shortage)'}
                 </p>
@@ -243,36 +350,112 @@ export function IncidentForm({ isOpen, onClose, onSuccess }) {
               </label>
               <textarea
                 id="incident-desc"
-                rows={3}
+                rows={2}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="e.g. Pedestrian struck by vehicle, unresponsive with visible head trauma"
-                className="w-full text-xs p-3 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 outline-none transition-colors"
+                className="w-full text-xs p-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 outline-none transition-colors"
               />
               {errors.description && (
                 <p className="text-[11px] text-red-600 mt-1">{errors.description}</p>
               )}
             </div>
 
-            {/* Location */}
+            {/* Location & Geocoding Input */}
             <div>
               <label
                 htmlFor="incident-location"
                 className="block text-xs font-bold text-slate-700 mb-1 uppercase tracking-wider"
               >
-                Incident Location & Landmarks
+                Incident Location & Landmarks (Pune Sector)
               </label>
-              <input
-                id="incident-location"
-                type="text"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="e.g. Shivaji Nagar Bus Station, Sector 2"
-                className="w-full text-xs p-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 outline-none transition-colors"
-              />
+              <div className="flex gap-2">
+                <input
+                  id="incident-location"
+                  type="text"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="e.g. Fergusson College Rd, Deccan Gymkhana"
+                  className="w-full text-xs p-2.5 rounded-lg border border-slate-300 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 outline-none transition-colors"
+                />
+                <button
+                  type="button"
+                  onClick={handleGeocode}
+                  disabled={isGeocoding || !location.trim()}
+                  className="px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer shrink-0 transition-colors flex items-center gap-1 disabled:opacity-50"
+                  title="Geocode address with OpenStreetMap Nominatim"
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  <span>{isGeocoding ? 'Locating...' : 'Geocode'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowMapPicker(!showMapPicker)}
+                  className={`px-3 rounded-lg text-xs font-semibold cursor-pointer shrink-0 transition-colors flex items-center gap-1 border ${
+                    showMapPicker
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                  }`}
+                  title="Click to pick coordinates directly on map"
+                >
+                  <MapPin className="w-3.5 h-3.5" />
+                  <span>{showMapPicker ? 'Hide Map' : 'Map Pin'}</span>
+                </button>
+              </div>
               {errors.location && (
                 <p className="text-[11px] text-red-600 mt-1">{errors.location}</p>
               )}
+            </div>
+
+            {/* Interactive Coordinate Picker Map (if toggled) */}
+            {showMapPicker && (
+              <div className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50 p-2 space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] text-slate-600 px-1">
+                  <span className="font-medium">Click on the street map or drag pin to pick coordinates:</span>
+                  {selectedCoords && (
+                    <span className="font-mono font-bold text-blue-700">
+                      {selectedCoords.lat}, {selectedCoords.lng}
+                    </span>
+                  )}
+                </div>
+                <div ref={mapPickerRef} className="w-full h-44 rounded border border-slate-200 z-10" />
+              </div>
+            )}
+
+            {/* Selected Coordinates Status Badge */}
+            {selectedCoords && (
+              <div className="text-[11px] bg-blue-50 border border-blue-200 p-2 rounded-lg flex items-center justify-between font-mono">
+                <div className="flex items-center gap-1.5 text-blue-900">
+                  <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Coords: {selectedCoords.lat.toFixed(4)}, {selectedCoords.lng.toFixed(4)}</span>
+                </div>
+                <span className="text-[10px] bg-blue-100 text-blue-800 font-sans px-2 py-0.5 rounded font-semibold uppercase">
+                  {locationType === 'user_selected'
+                    ? 'User Selected'
+                    : locationType === 'geocoded'
+                    ? 'Geocoded (OSM)'
+                    : 'Demo Landmark'}
+                </span>
+              </div>
+            )}
+
+            {/* Quick Pune Landmarks Grid */}
+            <div>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                Quick Pune Demo Landmarks:
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {QUICK_PUNE_LANDMARKS.slice(0, 6).map((lm) => (
+                  <button
+                    key={lm.name}
+                    type="button"
+                    onClick={() => handleSelectQuickLandmark(lm)}
+                    className="text-[10px] px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium cursor-pointer transition-colors"
+                  >
+                    {lm.name.split(',')[0]}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Action buttons */}

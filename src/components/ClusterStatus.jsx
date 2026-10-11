@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Server, Database, Truck, Building2, Radio, CheckCircle2, AlertTriangle, XCircle, RefreshCw, Wrench } from 'lucide-react';
+import { Server, Database, Truck, Building2, Radio, CheckCircle2, AlertTriangle, XCircle, RefreshCw, Wrench, Wifi } from 'lucide-react';
 import { getClusterHealth, recoverIncidents } from '../services/api';
 
 export function ClusterStatus({ isOpen, onClose }) {
@@ -20,10 +20,12 @@ export function ClusterStatus({ isOpen, onClose }) {
         status: 'degraded',
         components: {
           coordinator_api: { status: 'healthy', target: 'http://localhost:3000' },
+          websocket_gateway: { status: 'healthy', endpoint: '/ws', connected_clients: 1 },
           database: { status: 'healthy', type: 'PostgreSQL / SQLite' },
           ambulance_grpc: { status: 'healthy', target: 'localhost:50051' },
           hospital_grpc: { status: 'healthy', target: 'localhost:50052' },
-          rabbitmq: { status: 'healthy', target: 'emergency_events' }
+          rabbitmq: { status: 'healthy', target: 'emergency_events' },
+          transactional_outbox: { status: 'healthy', pending_events: 0 }
         }
       });
     } finally {
@@ -60,6 +62,18 @@ export function ClusterStatus({ isOpen, onClose }) {
       icon: Server,
       status: comps.coordinator_api?.status || 'healthy',
       details: comps.coordinator_api?.target || 'FastAPI / Express Gateway',
+    },
+    {
+      name: 'Live WebSocket Gateway',
+      icon: Wifi,
+      status: comps.websocket_gateway?.status || 'healthy',
+      details: `Endpoint ${comps.websocket_gateway?.endpoint || '/ws'} (${comps.websocket_gateway?.connected_clients ?? 1} active client(s))`,
+    },
+    {
+      name: 'Transactional Outbox',
+      icon: Radio,
+      status: comps.transactional_outbox?.status || 'healthy',
+      details: `Pending: ${comps.transactional_outbox?.pending_events ?? 0} events (Guaranteed Delivery)`,
     },
     {
       name: 'PostgreSQL Database',
@@ -101,7 +115,7 @@ export function ClusterStatus({ isOpen, onClose }) {
                 Distributed Cluster Health & Topology
               </h3>
               <p className="text-[11px] text-slate-500">
-                FA-1 Service-Oriented Microservices & Middleware Status
+                Microservices, WebSocket Gateway & Middleware Telemetry
               </p>
             </div>
           </div>
@@ -136,7 +150,7 @@ export function ClusterStatus({ isOpen, onClose }) {
             </button>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1">
             {services.map((svc, idx) => {
               const Icon = svc.icon;
               const isOk = svc.status === 'healthy';
@@ -171,7 +185,7 @@ export function ClusterStatus({ isOpen, onClose }) {
               <div>
                 <p className="text-xs font-bold text-blue-950">Crash Recovery & Reconciliation</p>
                 <p className="text-[11px] text-blue-800/80">
-                  Detects and repairs any stuck DISPATCHING or ROLLBACK_PENDING incidents.
+                  Detects and repairs any stuck intermediate or uncommitted incidents.
                 </p>
               </div>
               <button
@@ -185,7 +199,7 @@ export function ClusterStatus({ isOpen, onClose }) {
             </div>
             {reconcileResult && (
               <p className="text-[11px] text-emerald-700 font-medium">
-                ✓ Reconciliation complete. All resource states synchronized.
+                ✓ Reconciliation complete. States synchronized across cluster.
               </p>
             )}
           </div>
